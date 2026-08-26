@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>คู่มือระบบห้องความดันบวกกันฝุ่น PM2.5</title>
+<style>
+@page { size: A4 portrait; margin: 12mm; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Noto Sans Thai","Thonburi","Tahoma",sans-serif;font-size:13px;color:#222;line-height:1.5;padding:0 8px}
+.page{page-break-after:always;min-height:100vh;padding-top:10px}
+.page:last-child{page-break-after:avoid}
+h1{font-size:22px;color:#1b5e20;border-bottom:3px solid #1b5e20;padding-bottom:4px;margin:10px 0 8px}
+h2{font-size:16px;color:#0d47a1;margin:12px 0 6px}
+h3{font-size:14px;color:#e65100;margin:10px 0 4px}
+table{width:100%;border-collapse:collapse;margin:6px 0 10px;font-size:12px}
+th,td{border:1px solid #bbb;padding:5px 8px;text-align:left}
+th{background:#e8f5e9;font-weight:600}
+tr:nth-child(even){background:#f5f5f5}
+.note{background:#e3f2fd;border-left:4px solid #1565c0;padding:8px 12px;margin:8px 0;border-radius:4px;font-size:12px}
+.warn{background:#fff3e0;border-left:4px solid #e65100;padding:8px 12px;margin:8px 0;border-radius:4px;font-size:12px}
+.danger{background:#fce4ec;border-left:4px solid #c62828;padding:8px 12px;margin:8px 0;border-radius:4px;font-size:12px}
+svg{width:100%;height:auto;display:block;margin:6px 0}
+.step{margin:4px 0 4px 18px;counter-increment:step}
+.step::before{content:counter(step);display:inline-block;width:22px;height:22px;background:#1b5e20;color:#fff;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;margin-right:8px}
+ol{counter-reset:step;list-style:none;padding:0}
+li{margin-bottom:6px}
+ul{margin:4px 0 4px 20px}
+</style>
+</head>
+<body>
+
+<!-- ==================== PAGE 1: ภาพรวม ==================== -->
+<div class="page">
+<h1>คู่มือระบบห้องความดันบวกกันฝุ่น PM2.5</h1>
+<p>ระบบใช้บอร์ด 3 ตัวทำงานร่วมกัน: <b>ESP32U</b> วัดอากาศนอกห้อง ส่งให้ <b>ESP32 MASTER</b> ผ่าน ESP-NOW, <b>UNO R4 WiFi</b> วัดอากาศในห้อง ส่งให้ MASTER ผ่าน UDP, แล้ว MASTER คำนวณสั่ง Relay เปิด/ปิดพัดลม + ส่งข้อมูลขึ้น Google Sheet</p>
+
+<h2>สถาปัตยกรรมระบบ</h2>
+<svg viewBox="0 0 800 280" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L9,5 L0,9z" fill="#2e7d32"/></marker>
+    <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L9,5 L0,9z" fill="#1565c0"/></marker>
+    <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L9,5 L0,9z" fill="#6a1b9a"/></marker>
+    <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1 L9,5 L0,9z" fill="#ef6c00"/></marker>
+  </defs>
+  <!-- ESP32U -->
+  <rect x="40" y="40" width="170" height="80" rx="10" fill="#1b5e20"/>
+  <text x="125" y="72" text-anchor="middle" fill="#fff" font-size="15" font-weight="700">ESP32U</text>
+  <text x="125" y="88" text-anchor="middle" fill="#c8e6c9" font-size="11">โหนดนอกห้อง</text>
+  <text x="125" y="108" text-anchor="middle" fill="#a5d6a7" font-size="9">GP2Y1014 + BMP180</text>
+  <!-- UNO R4 -->
+  <rect x="40" y="160" width="170" height="80" rx="10" fill="#01579b"/>
+  <text x="125" y="192" text-anchor="middle" fill="#fff" font-size="15" font-weight="700">UNO R4 WiFi</text>
+  <text x="125" y="208" text-anchor="middle" fill="#b3e5fc" font-size="11">โหนดในห้อง</text>
+  <text x="125" y="228" text-anchor="middle" fill="#81d4fa" font-size="9">GP2Y1014 + BMP180</text>
+  <!-- MASTER -->
+  <rect x="370" y="80" width="190" height="100" rx="10" fill="#0d47a1"/>
+  <text x="465" y="115" text-anchor="middle" fill="#fff" font-size="16" font-weight="700">ESP32 MASTER</text>
+  <text x="465" y="135" text-anchor="middle" fill="#bbdefb" font-size="11">คำนวณ + คุมพัดลม</text>
+  <text x="465" y="155" text-anchor="middle" fill="#90caf9" font-size="10">ส่ง Google Sheet</text>
+  <!-- Relay + Fan -->
+  <rect x="650" y="80" width="130" height="100" rx="10" fill="#ad1457"/>
+  <text x="715" y="118" text-anchor="middle" fill="#fff" font-size="14" font-weight="700">Relay</text>
+  <text x="715" y="140" text-anchor="middle" fill="#f8bbd0" font-size="28">&#9881;</text>
+  <text x="715" y="168" text-anchor="middle" fill="#f8bbd0" font-size="12">พัดลม</text>
+  <!-- Google Sheet -->
+  <ellipse cx="465" cy="25" rx="85" ry="22" fill="#f9a825"/>
+  <text x="465" y="23" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">Google Sheet</text>
+  <text x="465" y="38" text-anchor="middle" fill="#fff8e1" font-size="9">(ผ่าน Internet)</text>
+  <!-- Arrows -->
+  <line x1="212" y1="80" x2="368" y2="115" stroke="#2e7d32" stroke-width="2.5" stroke-dasharray="8,4" marker-end="url(#a1)"/>
+  <text x="285" y="86" fill="#2e7d32" font-size="11" font-weight="700">ESP-NOW</text>
+  <line x1="212" y1="200" x2="368" y2="155" stroke="#1565c0" stroke-width="2.5" stroke-dasharray="8,4" marker-end="url(#a2)"/>
+  <text x="275" y="208" fill="#1565c0" font-size="11" font-weight="700">UDP (WiFi)</text>
+  <line x1="562" y1="130" x2="648" y2="130" stroke="#6a1b9a" stroke-width="2.5" marker-end="url(#a3)"/>
+  <text x="595" y="122" text-anchor="middle" fill="#6a1b9a" font-size="10">Relay</text>
+  <line x1="465" y1="80" x2="465" y2="48" stroke="#ef6c00" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#a4)"/>
+  <text x="515" y="65" fill="#ef6c00" font-size="10" font-weight="700">HTTP</text>
+</svg>
+
+<h2>บทบาทของแต่ละบอร์ด</h2>
+<table>
+<tr><th>บอร์ด</th><th>ตำแหน่ง</th><th>เซ็นเซอร์</th><th>ส่งข้อมูลทาง</th><th>หน้าที่</th></tr>
+<tr><td style="color:#1b5e20;font-weight:700">ESP32U</td><td>นอกห้อง</td><td>GP2Y1014 + BMP180</td><td>ESP-NOW</td><td>วัดฝุ่น PM2.5 + ความดันอากาศ นอกห้อง ส่งถึง MASTER โดยตรง</td></tr>
+<tr><td style="color:#01579b;font-weight:700">UNO R4 WiFi</td><td>ในห้อง</td><td>GP2Y1014 + BMP180</td><td>UDP Broadcast (WiFi)</td><td>วัดฝุ่น PM2.5 + ความดันอากาศ ในห้อง ส่งผ่าน WiFi บ้าน</td></tr>
+<tr><td style="color:#0d47a1;font-weight:700">ESP32</td><td>ตัวกลาง</td><td>ไม่มี</td><td>WiFi (Internet)</td><td>รับข้อมูลจากทั้งสองตัว คำนวณ คุม Relay พัดลม ส่ง Google Sheet</td></tr>
+</table>
+
+<h2>ตรรกะควบคุมพัดลม</h2>
+<table>
+<tr><th>สถานะ</th><th>เงื่อนไข</th><th>พัดลม</th></tr>
+<tr><td>ปกติ</td><td>เริ่มต้น / ข้อมูลยังไม่ครบ</td><td style="color:green;font-weight:700">เปิด (สร้างความดันบวก)</td></tr>
+<tr><td style="color:#c62828">ตัดพัดลม</td><td>ฝุ่นในห้อง &lt; นอกห้อง <b>และ</b> ความดันในห้องสูงเกิน 0.30 hPa</td><td style="color:red;font-weight:700">ปิด (คนอึดอัด)</td></tr>
+<tr><td style="color:green">เปิดกลับ</td><td>ฝุ่นในห้อง &ge; นอกห้อง <b>หรือ</b> ความดันตกต่ำกว่า 0.15 hPa</td><td style="color:green;font-weight:700">เปิดกลับ</td></tr>
+<tr><td style="color:#e65100">Fail-safe</td><td>เซ็นเซอร์ตัวใดเงียบ &gt; 30 วินาที</td><td style="color:green;font-weight:700">เปิด (ปลอดภัยเรื่องฝุ่น)</td></tr>
+</table>
+
+<div class="note"><b>ทำไม UNO R4 ใช้ ESP-NOW ไม่ได้:</b> UNO R4 WiFi มีชิป ESP32-S3 อยู่ในบอร์ด แต่ทำหน้าที่เป็นแค่ WiFi bridge ผ่าน firmware ของ Arduino (WiFiS3 library) ไม่เปิด API ของ ESP-NOW ให้ใช้ได้ จึงใช้ UDP Broadcast ผ่าน WiFi บ้านแทน ซึ่งก็เป็นการสื่อสารตรงถึง MASTER ไม่ต้องมีเซิร์ฟเวอร์กลาง</div>
+</div>
+
+<!-- ==================== PAGE 2: ESP32U Wiring ==================== -->
+<div class="page">
+<h1>แผนภาพการต่อสาย: ESP32U (โหนดนอกห้อง)</h1>
+<svg viewBox="0 0 800 540" xmlns="http://www.w3.org/2000/svg">
+  <!-- Board -->
+  <rect x="30" y="50" width="210" height="270" rx="10" fill="#1b5e20"/>
+  <text x="135" y="82" text-anchor="middle" fill="#fff" font-size="18" font-weight="700">ESP32U</text>
+  <text x="135" y="100" text-anchor="middle" fill="#c8e6c9" font-size="11">โหนดนอกห้อง</text>
+  <!-- Board pins (right edge x=240) -->
+  <circle cx="240" cy="70" r="4.5" fill="#ef5350"/><text x="232" y="74" text-anchor="end" fill="#fff" font-size="10">5V</text>
+  <circle cx="240" cy="95" r="4.5" fill="#212121" stroke="#fff" stroke-width="1"/><text x="232" y="99" text-anchor="end" fill="#fff" font-size="10">GND</text>
+  <circle cx="240" cy="120" r="4.5" fill="#fb8c00"/><text x="232" y="124" text-anchor="end" fill="#fff" font-size="10">3V3</text>
+  <circle cx="240" cy="155" r="4.5" fill="#42a5f5"/><text x="232" y="159" text-anchor="end" fill="#fff" font-size="9">GPIO21</text>
+  <circle cx="240" cy="180" r="4.5" fill="#26a69a"/><text x="232" y="184" text-anchor="end" fill="#fff" font-size="9">GPIO22</text>
+  <circle cx="240" cy="215" r="4.5" fill="#ffee58"/><text x="232" y="219" text-anchor="end" fill="#fff" font-size="9">GPIO25</text>
+  <circle cx="240" cy="240" r="4.5" fill="#ec407a"/><text x="232" y="244" text-anchor="end" fill="#fff" font-size="9">GPIO34</text>
+  <circle cx="240" cy="275" r="4.5" fill="#bdbdbd"/><text x="232" y="279" text-anchor="end" fill="#fff" font-size="9">GPIO33</text>
+  <!-- Pin labels inside board -->
+  <text x="135" y="135" text-anchor="middle" fill="#a5d6a7" font-size="9">GP2Y1014 Dust Sensor</text>
+  <text x="135" y="150" text-anchor="middle" fill="#a5d6a7" font-size="9">+ BMP180 (I2C)</text>
+
+  <!-- GP2Y1014 Box -->
+  <rect x="460" y="115" width="220" height="155" rx="8" fill="#fff3e0" stroke="#e65100" stroke-width="1.5"/>
+  <text x="570" y="140" text-anchor="middle" fill="#e65100" font-size="14" font-weight="700">GP2Y1014</text>
+  <text x="570" y="157" text-anchor="middle" fill="#795548" font-size="10">เซ็นเซอร์ฝุ่น PM2.5</text>
+  <!-- Left pins -->
+  <circle cx="460" cy="150" r="4" fill="#ffee58"/><text x="470" y="154" fill="#333" font-size="10">LED (ขา 3)</text>
+  <circle cx="460" cy="220" r="4" fill="#ec407a"/><text x="470" y="224" fill="#333" font-size="10">Vo (ขา 5)</text>
+  <!-- Right pins -->
+  <circle cx="680" cy="135" r="4" fill="#ef5350"/><text x="672" y="139" text-anchor="end" fill="#333" font-size="10">VCC (ขา 6)</text>
+  <circle cx="680" cy="160" r="4" fill="#ef5350"/><text x="672" y="164" text-anchor="end" fill="#333" font-size="10">V-LED (ขา 1)</text>
+  <circle cx="680" cy="185" r="4" fill="#212121"/><text x="672" y="189" text-anchor="end" fill="#333" font-size="10">LED-GND (ขา 2)</text>
+  <circle cx="680" cy="210" r="4" fill="#212121"/><text x="672" y="214" text-anchor="end" fill="#333" font-size="10">S-GND (ขา 4)</text>
+
+  <!-- BMP180 Box -->
+  <rect x="460" y="285" width="220" height="110" rx="8" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.5"/>
+  <text x="570" y="308" text-anchor="middle" fill="#1565c0" font-size="14" font-weight="700">BMP180 (GY-68)</text>
+  <text x="570" y="324" text-anchor="middle" fill="#546e7a" font-size="10">ความดันอากาศ + อุณหภูมิ (I2C)</text>
+  <!-- Left pins -->
+  <circle cx="460" cy="350" r="4" fill="#42a5f5"/><text x="470" y="354" fill="#333" font-size="10">SDA</text>
+  <circle cx="460" cy="375" r="4" fill="#26a69a"/><text x="470" y="379" fill="#333" font-size="10">SCL</text>
+  <!-- Right pins -->
+  <circle cx="680" cy="330" r="4" fill="#fb8c00"/><text x="672" y="334" text-anchor="end" fill="#333" font-size="10">VCC (3V3)</text>
+  <circle cx="680" cy="360" r="4" fill="#212121"/><text x="672" y="364" text-anchor="end" fill="#333" font-size="10">GND</text>
+
+  <!-- Button Box -->
+  <rect x="250" y="410" width="150" height="55" rx="6" fill="#eceff1" stroke="#546e7a" stroke-width="1.2"/>
+  <text x="325" y="435" text-anchor="middle" fill="#37474f" font-size="12" font-weight="600">ปุ่มกด</text>
+  <text x="325" y="450" text-anchor="middle" fill="#78909c" font-size="9">(Reset / Re-scan)</text>
+  <circle cx="250" cy="435" r="3.5" fill="#bdbdbd"/>
+  <!-- Ground symbol on pin B -->
+  <circle cx="325" cy="465" r="3" fill="#212121"/>
+  <line x1="315" y1="470" x2="335" y2="470" stroke="#212121" stroke-width="1.5"/>
+  <line x1="319" y1="474" x2="331" y2="474" stroke="#212121" stroke-width="1.5"/>
+  <line x1="323" y1="478" x2="327" y2="478" stroke="#212121" stroke-width="1.5"/>
+
+  <!-- ===== WIRES ===== -->
+  <!-- W1: 5V → GP2Y VCC -->
+  <path d="M240,70 H380 V135 H680" fill="none" stroke="#e53935" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- W2: 5V → V-LED (via R 150Ω) -->
+  <path d="M360,70 V160 H620 L622,154 L626,166 L630,154 L634,166 L638,154 L642,166 L646,154 L650,160 H680" fill="none" stroke="#e53935" stroke-width="2.5" stroke-linejoin="round"/>
+  <text x="635" y="147" text-anchor="middle" fill="#c62828" font-size="9" font-weight="600">R 150&#937;</text>
+  <circle cx="360" cy="70" r="3" fill="#e53935"/>
+
+  <!-- Capacitor: V-LED to GND -->
+  <line x1="500" y1="160" x2="500" y2="168" stroke="#666" stroke-width="1.5"/>
+  <line x1="492" y1="168" x2="508" y2="168" stroke="#666" stroke-width="2"/>
+  <line x1="492" y1="174" x2="508" y2="174" stroke="#666" stroke-width="2"/>
+  <line x1="500" y1="174" x2="500" y2="185" stroke="#666" stroke-width="1.5"/>
+  <circle cx="500" cy="160" r="2.5" fill="#666"/>
+  <circle cx="500" cy="185" r="2.5" fill="#666"/>
+  <text x="516" y="175" fill="#666" font-size="9">C 220&#181;F</text>
+
+  <!-- W3 black: GND trunk + branches -->
+  <path d="M240,95 H400" fill="none" stroke="#212121" stroke-width="2.5"/>
+  <path d="M340,95 V185 H680" fill="none" stroke="#212121" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M330,95 V210 H680" fill="none" stroke="#212121" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="330" cy="95" r="3" fill="#212121"/>
+  <circle cx="340" cy="95" r="3" fill="#212121"/>
+  <circle cx="400" cy="95" r="3" fill="#212121"/>
+
+  <!-- W5: GND → BMP GND (route around right) -->
+  <path d="M400,95 V105 H755 V360 H680" fill="none" stroke="#212121" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- W6 orange: 3V3 → BMP VCC (route with hops) -->
+  <path d="M240,120 H250 V150 A5,5,0,0,0,250,160 V175 A5,5,0,0,0,250,185 V210 A5,5,0,0,0,250,220 V235 A5,5,0,0,0,250,245 V400 H745 V365 A5,5,0,0,1,745,355 V330 H680" fill="none" stroke="#fb8c00" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- W7 blue: GPIO21 → SDA -->
+  <path d="M240,155 H260 V350 H460" fill="none" stroke="#42a5f5" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- W8 teal: GPIO22 → SCL -->
+  <path d="M240,180 H268 V375 H460" fill="none" stroke="#26a69a" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- W9 yellow: GPIO25 → LED -->
+  <path d="M240,215 H276 V150 H460" fill="none" stroke="#f9a825" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- W10 pink: GPIO34 → Vo (hops over blue/teal) -->
+  <path d="M240,240 H245 A5,5,0,0,0,255,240 A5,5,0,0,0,265,240 A5,5,0,0,0,273,240 H296 V220 H460" fill="none" stroke="#ec407a" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- W11 gray: GPIO33 → Button -->
+  <path d="M240,275 H243 V435 H250" fill="none" stroke="#9e9e9e" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- ===== LEGEND ===== -->
+  <rect x="460" y="420" width="320" height="110" rx="6" fill="#fafafa" stroke="#ccc" stroke-width="1"/>
+  <text x="472" y="438" fill="#333" font-size="11" font-weight="700">สีสาย</text>
+  <line x1="472" y1="452" x2="502" y2="452" stroke="#e53935" stroke-width="3"/><text x="508" y="456" fill="#333" font-size="10">= 5V</text>
+  <line x1="472" y1="467" x2="502" y2="467" stroke="#fb8c00" stroke-width="3"/><text x="508" y="471" fill="#333" font-size="10">= 3.3V</text>
+  <line x1="472" y1="482" x2="502" y2="482" stroke="#212121" stroke-width="3"/><text x="508" y="486" fill="#333" font-size="10">= GND</text>
+  <line x1="472" y1="497" x2="502" y2="497" stroke="#9e9e9e" stroke-width="3"/><text x="508" y="501" fill="#333" font-size="10">= ปุ่มกด</text>
+  <line x1="632" y1="452" x2="662" y2="452" stroke="#f9a825" stroke-width="3"/><text x="668" y="456" fill="#333" font-size="10">= LED ฝุ่น</text>
+  <line x1="632" y1="467" x2="662" y2="467" stroke="#ec407a" stroke-width="3"/><text x="668" y="471" fill="#333" font-size="10">= Vo (Analog)</text>
+  <line x1="632" y1="482" x2="662" y2="482" stroke="#42a5f5" stroke-width="3"/><text x="668" y="486" fill="#333" font-size="10">= SDA (I2C)</text>
+  <line x1="632" y1="497" x2="662" y2="497" stroke="#26a69a" stroke-width="3"/><text x="668" y="501" fill="#333" font-size="10">= SCL (I2C)</text>
+  <text x="472" y="522" fill="#888" font-size="9">&#9651; สะพานโค้ง &#9651; = เส้นตัดกันแต่ไม่ได้ต่อกัน</text>
+</svg>
+
+<h2>ตารางการต่อสาย ESP32U</h2>
+<table>
+<tr><th>สีสาย</th><th>จาก ESP32U</th><th>ไปยัง GP2Y1014</th><th>หมายเหตุ</th></tr>
+<tr><td style="color:#e53935">แดง</td><td>5V (VIN)</td><td>GP2Y ขา 6 (VCC)</td><td>ไฟเลี้ยงเซ็นเซอร์</td></tr>
+<tr><td style="color:#e53935">แดง</td><td>5V ผ่าน R 150&#937;</td><td>GP2Y ขา 1 (V-LED)</td><td>+ C 220&#181;F ระหว่างขา 1 กับ GND</td></tr>
+<tr><td style="color:#212121">ดำ</td><td>GND</td><td>GP2Y ขา 2 (LED-GND) + ขา 4 (S-GND)</td><td>ต่อ GND ทั้งสองขา</td></tr>
+<tr><td style="color:#f9a825">เหลือง</td><td>GPIO 25</td><td>GP2Y ขา 3 (LED)</td><td>สัญญาณพัลส์ LED</td></tr>
+<tr><td style="color:#ec407a">ชมพู</td><td>GPIO 34</td><td>GP2Y ขา 5 (Vo)</td><td>สัญญาณ Analog ฝุ่น</td></tr>
+<tr><td style="color:#fb8c00">ส้ม</td><td>3V3</td><td>BMP180 VCC</td><td>ไฟเลี้ยง 3.3V</td></tr>
+<tr><td style="color:#212121">ดำ</td><td>GND</td><td>BMP180 GND</td><td></td></tr>
+<tr><td style="color:#42a5f5">ฟ้า</td><td>GPIO 21 (SDA)</td><td>BMP180 SDA</td><td>I2C Data</td></tr>
+<tr><td style="color:#26a69a">เขียว</td><td>GPIO 22 (SCL)</td><td>BMP180 SCL</td><td>I2C Clock</td></tr>
+<tr><td style="color:#9e9e9e">เทา</td><td>GPIO 33</td><td>ปุ่มกด &rarr; GND</td><td>กดค้าง = สแกน channel ใหม่</td></tr>
+</table>
+</div>
+
+<!-- ==================== PAGE 3: UNO R4 Wiring ==================== -->
+<div class="page">
+<h1>แผนภาพการต่อสาย: UNO R4 WiFi (โหนดในห้อง)</h1>
+<svg viewBox="0 0 800 520" xmlns="http://www.w3.org/2000/svg">
+  <!-- Board -->
+  <rect x="30" y="50" width="210" height="270" rx="10" fill="#01579b"/>
+  <text x="135" y="82" text-anchor="middle" fill="#fff" font-size="18" font-weight="700">UNO R4 WiFi</text>
+  <text x="135" y="100" text-anchor="middle" fill="#b3e5fc" font-size="11">โหนดในห้อง</text>
+  <!-- Board pins -->
+  <circle cx="240" cy="70" r="4.5" fill="#ef5350"/><text x="232" y="74" text-anchor="end" fill="#fff" font-size="10">5V</text>
+  <circle cx="240" cy="95" r="4.5" fill="#212121" stroke="#fff" stroke-width="1"/><text x="232" y="99" text-anchor="end" fill="#fff" font-size="10">GND</text>
+  <circle cx="240" cy="145" r="4.5" fill="#42a5f5"/><text x="232" y="149" text-anchor="end" fill="#fff" font-size="10">SDA</text>
+  <circle cx="240" cy="170" r="4.5" fill="#26a69a"/><text x="232" y="174" text-anchor="end" fill="#fff" font-size="10">SCL</text>
+  <circle cx="240" cy="205" r="4.5" fill="#ffee58"/><text x="232" y="209" text-anchor="end" fill="#fff" font-size="10">D7</text>
+  <circle cx="240" cy="230" r="4.5" fill="#ec407a"/><text x="232" y="234" text-anchor="end" fill="#fff" font-size="10">A0</text>
+  <text x="135" y="135" text-anchor="middle" fill="#81d4fa" font-size="9">GP2Y1014 Dust Sensor</text>
+  <text x="135" y="150" text-anchor="middle" fill="#81d4fa" font-size="9">+ BMP180 (I2C 5V)</text>
+
+  <!-- GP2Y1014 Box -->
+  <rect x="460" y="115" width="220" height="155" rx="8" fill="#fff3e0" stroke="#e65100" stroke-width="1.5"/>
+  <text x="570" y="140" text-anchor="middle" fill="#e65100" font-size="14" font-weight="700">GP2Y1014</text>
+  <text x="570" y="157" text-anchor="middle" fill="#795548" font-size="10">เซ็นเซอร์ฝุ่น PM2.5</text>
+  <circle cx="460" cy="150" r="4" fill="#ffee58"/><text x="470" y="154" fill="#333" font-size="10">LED (ขา 3)</text>
+  <circle cx="460" cy="220" r="4" fill="#ec407a"/><text x="470" y="224" fill="#333" font-size="10">Vo (ขา 5)</text>
+  <circle cx="680" cy="135" r="4" fill="#ef5350"/><text x="672" y="139" text-anchor="end" fill="#333" font-size="10">VCC (ขา 6)</text>
+  <circle cx="680" cy="160" r="4" fill="#ef5350"/><text x="672" y="164" text-anchor="end" fill="#333" font-size="10">V-LED (ขา 1)</text>
+  <circle cx="680" cy="185" r="4" fill="#212121"/><text x="672" y="189" text-anchor="end" fill="#333" font-size="10">LED-GND (ขา 2)</text>
+  <circle cx="680" cy="210" r="4" fill="#212121"/><text x="672" y="214" text-anchor="end" fill="#333" font-size="10">S-GND (ขา 4)</text>
+
+  <!-- BMP180 Box -->
+  <rect x="460" y="285" width="220" height="110" rx="8" fill="#e3f2fd" stroke="#1565c0" stroke-width="1.5"/>
+  <text x="570" y="308" text-anchor="middle" fill="#1565c0" font-size="14" font-weight="700">BMP180 (GY-68)</text>
+  <text x="570" y="324" text-anchor="middle" fill="#546e7a" font-size="10">ความดัน + อุณหภูมิ (I2C)</text>
+  <circle cx="460" cy="350" r="4" fill="#42a5f5"/><text x="470" y="354" fill="#333" font-size="10">SDA</text>
+  <circle cx="460" cy="375" r="4" fill="#26a69a"/><text x="470" y="379" fill="#333" font-size="10">SCL</text>
+  <circle cx="680" cy="330" r="4" fill="#ef5350"/><text x="672" y="334" text-anchor="end" fill="#333" font-size="10">VCC (5V)</text>
+  <circle cx="680" cy="360" r="4" fill="#212121"/><text x="672" y="364" text-anchor="end" fill="#333" font-size="10">GND</text>
+
+  <!-- WIRES -->
+  <!-- Red trunk + branches -->
+  <path d="M240,70 H745" fill="none" stroke="#e53935" stroke-width="2.5"/>
+  <path d="M380,70 V135 H680" fill="none" stroke="#e53935" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M360,70 V160 H620 L622,154 L626,166 L630,154 L634,166 L638,154 L642,166 L646,154 L650,160 H680" fill="none" stroke="#e53935" stroke-width="2.5" stroke-linejoin="round"/>
+  <text x="635" y="147" text-anchor="middle" fill="#c62828" font-size="9" font-weight="600">R 150&#937;</text>
+  <circle cx="360" cy="70" r="3" fill="#e53935"/>
+  <circle cx="380" cy="70" r="3" fill="#e53935"/>
+  <!-- Red to BMP VCC -->
+  <path d="M745,70 V330 H680" fill="none" stroke="#e53935" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Cap -->
+  <line x1="500" y1="160" x2="500" y2="168" stroke="#666" stroke-width="1.5"/>
+  <line x1="492" y1="168" x2="508" y2="168" stroke="#666" stroke-width="2"/>
+  <line x1="492" y1="174" x2="508" y2="174" stroke="#666" stroke-width="2"/>
+  <line x1="500" y1="174" x2="500" y2="185" stroke="#666" stroke-width="1.5"/>
+  <circle cx="500" cy="160" r="2.5" fill="#666"/><circle cx="500" cy="185" r="2.5" fill="#666"/>
+  <text x="516" y="175" fill="#666" font-size="9">C 220&#181;F</text>
+
+  <!-- Black trunk + branches -->
+  <path d="M240,95 H400" fill="none" stroke="#212121" stroke-width="2.5"/>
+  <path d="M340,95 V185 H680" fill="none" stroke="#212121" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M330,95 V210 H680" fill="none" stroke="#212121" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M400,95 V105 H735 V360 H680" fill="none" stroke="#212121" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="330" cy="95" r="3" fill="#212121"/>
+  <circle cx="340" cy="95" r="3" fill="#212121"/>
+  <circle cx="400" cy="95" r="3" fill="#212121"/>
+
+  <!-- Signals -->
+  <path d="M240,145 H260 V350 H460" fill="none" stroke="#42a5f5" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M240,170 H268 V375 H460" fill="none" stroke="#26a69a" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M240,205 H276 V150 H460" fill="none" stroke="#f9a825" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Pink with hops -->
+  <path d="M240,230 H255 A5,5,0,0,0,265,230 A5,5,0,0,0,273,230 H296 V220 H460" fill="none" stroke="#ec407a" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Legend -->
+  <rect x="460" y="420" width="320" height="85" rx="6" fill="#fafafa" stroke="#ccc"/>
+  <text x="472" y="438" fill="#333" font-size="11" font-weight="700">สีสาย (เหมือน ESP32U)</text>
+  <line x1="472" y1="452" x2="502" y2="452" stroke="#e53935" stroke-width="3"/><text x="508" y="456" fill="#333" font-size="10">= 5V</text>
+  <line x1="472" y1="467" x2="502" y2="467" stroke="#212121" stroke-width="3"/><text x="508" y="471" fill="#333" font-size="10">= GND</text>
+  <line x1="632" y1="452" x2="662" y2="452" stroke="#42a5f5" stroke-width="3"/><text x="668" y="456" fill="#333" font-size="10">= SDA</text>
+  <line x1="632" y1="467" x2="662" y2="467" stroke="#26a69a" stroke-width="3"/><text x="668" y="471" fill="#333" font-size="10">= SCL</text>
+  <line x1="472" y1="497" x2="502" y2="497" stroke="#f9a825" stroke-width="3"/><text x="508" y="500" fill="#333" font-size="10">= LED ฝุ่น (D7)</text>
+  <line x1="632" y1="497" x2="662" y2="497" stroke="#ec407a" stroke-width="3"/><text x="668" y="500" fill="#333" font-size="10">= Vo Analog (A0)</text>
+</svg>
+
+<h2>ตารางการต่อสาย UNO R4 WiFi</h2>
+<table>
+<tr><th>สีสาย</th><th>จาก UNO R4</th><th>ไปยัง GP2Y1014</th><th>หมายเหตุ</th></tr>
+<tr><td style="color:#e53935">แดง</td><td>5V</td><td>GP2Y ขา 6 (VCC)</td><td></td></tr>
+<tr><td style="color:#e53935">แดง</td><td>5V ผ่าน R 150&#937;</td><td>GP2Y ขา 1 (V-LED)</td><td>+ C 220&#181;F ลง GND</td></tr>
+<tr><td style="color:#212121">ดำ</td><td>GND</td><td>GP2Y ขา 2 + ขา 4</td><td></td></tr>
+<tr><td style="color:#f9a825">เหลือง</td><td>D7</td><td>GP2Y ขา 3 (LED)</td><td>สัญญาณพัลส์ LED</td></tr>
+<tr><td style="color:#ec407a">ชมพู</td><td>A0</td><td>GP2Y ขา 5 (Vo)</td><td>ADC อ่านค่าฝุ่น</td></tr>
+<tr><td style="color:#e53935">แดง</td><td>5V</td><td>BMP180 VCC</td><td style="color:#c62828;font-weight:600">R4 ใช้ 5V (GY-68 มี regulator)</td></tr>
+<tr><td style="color:#212121">ดำ</td><td>GND</td><td>BMP180 GND</td><td></td></tr>
+<tr><td style="color:#42a5f5">ฟ้า</td><td>SDA</td><td>BMP180 SDA</td><td></td></tr>
+<tr><td style="color:#26a69a">เขียว</td><td>SCL</td><td>BMP180 SCL</td><td></td></tr>
+</table>
+<div class="note"><b>ความแตกต่างจาก ESP32U:</b> UNO R4 WiFi เป็นลอจิก 5V ดังนั้น ADC ของ A0 อ่านได้ถึง 5V (ต่างจาก ESP32 ที่ 3.3V) และ BMP180 (GY-68) ต่อ VCC = 5V ได้เพราะโมดูลมี regulator ในตัว ขา I2C SDA/SCL ของบอร์ดอยู่ที่ตำแหน่ง SDA/SCL ของ header (ไม่ใช่ A4/A5)</div>
+</div>
+
+<!-- ==================== PAGE 4: MASTER Wiring ==================== -->
+<div class="page">
+<h1>แผนภาพการต่อสาย: ESP32 MASTER (ตัวกลาง)</h1>
+<svg viewBox="0 0 800 520" xmlns="http://www.w3.org/2000/svg">
+  <!-- Board -->
+  <rect x="30" y="50" width="210" height="270" rx="10" fill="#1b5e20"/>
+  <text x="135" y="82" text-anchor="middle" fill="#fff" font-size="18" font-weight="700">ESP32</text>
+  <text x="135" y="100" text-anchor="middle" fill="#c8e6c9" font-size="11">MASTER ตัวกลาง</text>
+  <text x="135" y="280" text-anchor="middle" fill="#a5d6a7" font-size="9">LED บนบอร์ด = GPIO2</text>
+  <text x="135" y="295" text-anchor="middle" fill="#a5d6a7" font-size="9">(แสดงสถานะพัดลม)</text>
+  <!-- Board pins -->
+  <circle cx="240" cy="70" r="4.5" fill="#ef5350"/><text x="232" y="74" text-anchor="end" fill="#fff" font-size="10">5V</text>
+  <circle cx="240" cy="95" r="4.5" fill="#212121" stroke="#fff" stroke-width="1"/><text x="232" y="99" text-anchor="end" fill="#fff" font-size="10">GND</text>
+  <circle cx="240" cy="155" r="4.5" fill="#ab47bc"/><text x="232" y="159" text-anchor="end" fill="#fff" font-size="9">GPIO26</text>
+  <circle cx="240" cy="215" r="4.5" fill="#bdbdbd"/><text x="232" y="219" text-anchor="end" fill="#fff" font-size="9">GPIO33</text>
+
+  <!-- Relay Module -->
+  <rect x="460" y="115" width="220" height="140" rx="8" fill="#fce4ec" stroke="#ad1457" stroke-width="1.5"/>
+  <text x="570" y="140" text-anchor="middle" fill="#ad1457" font-size="14" font-weight="700">Relay Module</text>
+  <text x="570" y="156" text-anchor="middle" fill="#880e4f" font-size="10">1 Channel</text>
+  <!-- Left pin -->
+  <circle cx="460" cy="185" r="4" fill="#ab47bc"/><text x="470" y="189" fill="#333" font-size="10">IN</text>
+  <!-- Right pins -->
+  <circle cx="680" cy="135" r="4" fill="#ef5350"/><text x="672" y="139" text-anchor="end" fill="#333" font-size="10">VCC (5V)</text>
+  <circle cx="680" cy="160" r="4" fill="#212121"/><text x="672" y="164" text-anchor="end" fill="#333" font-size="10">GND</text>
+  <!-- Bottom pins COM/NO -->
+  <circle cx="520" cy="255" r="4" fill="#795548"/><text x="520" y="248" text-anchor="middle" fill="#795548" font-size="10" font-weight="600">COM</text>
+  <circle cx="600" cy="255" r="4" fill="#795548"/><text x="600" y="248" text-anchor="middle" fill="#795548" font-size="10" font-weight="600">NO</text>
+
+  <!-- Button Box -->
+  <rect x="250" y="280" width="150" height="55" rx="6" fill="#eceff1" stroke="#546e7a" stroke-width="1.2"/>
+  <text x="325" y="303" text-anchor="middle" fill="#37474f" font-size="12" font-weight="600">ปุ่มกด</text>
+  <text x="325" y="318" text-anchor="middle" fill="#78909c" font-size="9">(Reset WiFi)</text>
+  <circle cx="300" cy="280" r="3.5" fill="#bdbdbd"/>
+  <circle cx="325" cy="335" r="3" fill="#212121"/>
+  <line x1="315" y1="340" x2="335" y2="340" stroke="#212121" stroke-width="1.5"/>
+  <line x1="319" y1="344" x2="331" y2="344" stroke="#212121" stroke-width="1.5"/>
+  <line x1="323" y1="348" x2="327" y2="348" stroke="#212121" stroke-width="1.5"/>
+
+  <!-- Adapter Box -->
+  <rect x="470" y="330" width="150" height="55" rx="6" fill="#efebe9" stroke="#5d4037" stroke-width="1.2"/>
+  <text x="545" y="352" text-anchor="middle" fill="#3e2723" font-size="12" font-weight="600">Adapter พัดลม</text>
+  <text x="545" y="368" text-anchor="middle" fill="#795548" font-size="9">(เช่น DC 12V)</text>
+  <circle cx="500" cy="330" r="3.5" fill="#c62828"/><text x="500" y="322" text-anchor="middle" fill="#c62828" font-size="9" font-weight="700">+</text>
+  <circle cx="560" cy="330" r="3.5" fill="#212121"/><text x="560" y="322" text-anchor="middle" fill="#212121" font-size="9" font-weight="700">&minus;</text>
+
+  <!-- Fan -->
+  <circle cx="700" cy="355" r="30" fill="#e8f5e9" stroke="#2e7d32" stroke-width="2"/>
+  <text x="700" y="350" text-anchor="middle" fill="#2e7d32" font-size="11" font-weight="600">FAN</text>
+  <text x="700" y="368" text-anchor="middle" fill="#2e7d32" font-size="10">&#9881;</text>
+  <circle cx="675" cy="335" r="2.5" fill="#795548"/>
+  <circle cx="675" cy="375" r="2.5" fill="#795548"/>
+
+  <!-- WIRES -->
+  <!-- Red: 5V → Relay VCC -->
+  <path d="M240,70 H380 V135 H680" fill="none" stroke="#e53935" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Black: GND → Relay GND -->
+  <path d="M240,95 H360 V160 H680" fill="none" stroke="#212121" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Purple: GPIO26 → IN -->
+  <path d="M240,155 H300 V185 H460" fill="none" stroke="#ab47bc" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Gray: GPIO33 → Button -->
+  <path d="M240,215 H300 V280" fill="none" stroke="#9e9e9e" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- Brown: Fan circuit -->
+  <path d="M520,255 V300 H500 V330" fill="none" stroke="#795548" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M600,255 V300 H675 V335" fill="none" stroke="#795548" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M675,375 V405 H560 V330" fill="none" stroke="#795548" stroke-width="2.5" stroke-linejoin="round"/>
+
+  <!-- Relay contact diagram -->
+  <line x1="520" y1="258" x2="520" y2="290" stroke="#795548" stroke-width="1.5" stroke-dasharray="3,3"/>
+  <line x1="600" y1="258" x2="600" y2="290" stroke="#795548" stroke-width="1.5" stroke-dasharray="3,3"/>
+  <text x="560" y="300" text-anchor="middle" fill="#795548" font-size="8">หน้าสัมผัส Relay</text>
+</svg>
+
+<h2>ตารางการต่อสาย ESP32 MASTER</h2>
+<table>
+<tr><th>สีสาย</th><th>จาก ESP32</th><th>ไปยัง</th><th>หมายเหตุ</th></tr>
+<tr><td style="color:#e53935">แดง</td><td>5V</td><td>Relay VCC</td><td>ไฟเลี้ยงโมดูล Relay</td></tr>
+<tr><td style="color:#212121">ดำ</td><td>GND</td><td>Relay GND</td><td></td></tr>
+<tr><td style="color:#ab47bc">ม่วง</td><td>GPIO 26</td><td>Relay IN</td><td>สัญญาณสั่งเปิด/ปิด Relay</td></tr>
+<tr><td style="color:#9e9e9e">เทา</td><td>GPIO 33</td><td>ปุ่มกด &rarr; GND</td><td>กดค้าง = Reconnect WiFi</td></tr>
+<tr><td style="color:#795548">น้ำตาล</td><td>Relay COM</td><td>ขั้วบวก Adapter  питания</td><td>ไฟเลี้ยงพัดลมวิ่งผ่าน COM-NO</td></tr>
+<tr><td style="color:#795548">น้ำตาล</td><td>Relay NO</td><td>ขั้วบวก พัดลม</td><td>ต่อเมื่อ Relay ON</td></tr>
+<tr><td style="color:#795548">น้ำตาล</td><td>ขั้วลบ Adapter</td><td>ขั้วลบ พัดลม</td><td>ต่อตรง (GND ร่วม)</td></tr>
+</table>
+
+<div class="warn"><b>สำคัญเรื่อง Relay:</b><br>
+&#8226; ถ้า Relay ไม่ทำงานสลับกัน ให้แก้ <code>RELAY_ACTIVE_HIGH = false</code> ในโค้ด (โมดูล Relay หลายรุ่นเป็น Active LOW)<br>
+&#8226; โมดูล Relay แบบ Optocoupler: ต่อ VCC &rarr; 5V, JD-VCC &rarr; 5V แยกจากถ้ามี jumper ถอดได้<br>
+&#8226; &#9888; &#x26A0; พัดลม AC 220V อันตราย! ให้ช่างไฟฟ้าต่อวงจรด้าน OUTPUT ของ Relay</div>
+</div>
+
+<!-- ==================== PAGE 5: Setup + Calibration ==================== -->
+<div class="page">
+<h1>ขั้นตอนติดตั้งและใช้งาน</h1>
+
+<h2>1. ติดตั้ง Library ที่ต้องใช้</h2>
+<table>
+<tr><th>บอร์ด</th><th>Library</th><th>วิธีติดตั้ง</th></tr>
+<tr><td>ESP32U + ESP32</td><td>Adafruit BMP085 Library</td><td>Arduino IDE &rarr; Tools &rarr; Manage Libraries &rarr; ค้นหา "Adafruit BMP085" &rarr; ติดตั้ง (รวม Adafruit BusIO ด้วย)</td></tr>
+<tr><td>UNO R4 WiFi</td><td>Adafruit BMP085 Library</td><td>เหมือนด้านบน + ต้องเลือก Board: "Arduino UNO R4 WiFi" ใน Arduino IDE</td></tr>
+<tr><td>ทั้งหมด</td><td>ESP32 Arduino Core</td><td> Boards Manager &rarr; "esp32" by Espressif (เวอร์ชัน 2.x หรือ 3.x)</td></tr>
+</table>
+
+<h2>2. Deploy Google Apps Script</h2>
+<ol>
+<li>เปิด Google Sheet ที่ต้องการ &rarr; <b>Extensions &rarr; Apps Script</b></li>
+<li>ลบโค้ดเดิมออก แล้ววางโค้ดจากไฟล์ <code>code.gs</code> ที่ให้มา</li>
+<li>กด <b>Deploy &rarr; New deployment</b><br>
+&#8226; Execute as: <b>Me</b><br>
+&#8226; Who has access: <b>Anyone</b></li>
+<li>คัดลอก URL ที่ได้ ไปใส่ใน <code>GOOGLE_SCRIPT_URL</code> ในไฟล์ <code>esp32_master.ino</code></li>
+</ol>
+
+<h2>3. อัปโหลดโค้ด (ทำตามลำดับ)</h2>
+<ol>
+<li><b>อัปโหลด ESP32 Master ก่อน</b><br>
+ใส่ชื่อ WiFi + PASSWORD + GOOGLE_SCRIPT_URL &rarr; เลือก Board "ESP32 Dev Module" &rarr; Upload<br>
+เปิด Serial Monitor (115200) &rarr; <b>จด MAC Address</b> ที่พิมพ์ออกมา เช่น <code>24:6F:28:AA:BB:CC</code></li>
+<li><b>ใส่ MAC ใน esp32u_node.ino</b><br>
+เอา MAC ที่ได้มาใส่ใน <code>MASTER_MAC[]</code> &rarr; เลือก Board &rarr; Upload</li>
+<li><b>ใส่ WiFi ใน unor4_node.ino</b><br>
+ใส่ ssid + password &rarr; เลือก Board "Arduino UNO R4 WiFi" &rarr; Upload</li>
+</ol>
+
+<div class="note"><b>สลับบทบาทได้:</b> ถ้าอยากให้ ESP32U อยู่ในห้อง UNO R4 อยู่นอกห้อง แค่เปลี่ยน <code>NODE_ID</code> เป็น "INSIDE" หรือ "OUTSIDE" ในไฟล์ node ทั้งสอง  MASTER จะจำแนกจากชื่อ node อัตโนมัติ</div>
+
+<h2>4. คาริเบรต (ทำหลังอัปโหลดเสร็จ)</h2>
+<table>
+<tr><th>รายการ</th><th>วิธีทำ</th><th>ใส่ค่าตรงไหน</th></tr>
+<tr><td><b>Baseline ฝุ่น</b></td><td>ปิดพัดลม ปล่อยให้อากาศนิ่ง &rarr; ดูค่า Voltage/Vo ใน Serial Monitor &rarr; ปรับ <code>baseline</code> ใน <code>readDustDensity()</code></td><td>ไฟล์ .ino ของแต่ละตัว</td></tr>
+<tr><td><b>Pressure Offset</b></td><td>เปิดประตูทุกบาน + ปิดพัดลม &rarr; ความดันใน=นอก &rarr; ดู dP ของ MASTER &rarr; เอาค่านั้นใส่เป็น offset</td><td><code>PRESSURE_OFFSET_HPA</code> ใน esp32_master.ino</td></tr>
+<tr><td><b>Relay Active</b></td><td>สั่ง Relay ดูว่า ON/OFF ถูกต้องไหม &rarr; ถ้าสลับกัน แก้ค่า</td><td><code>RELAY_ACTIVE_HIGH = false</code></td></tr>
+</table>
+
+<h2>5. ปรับเกณฑ์ควบคุม</h2>
+<table>
+<tr><th>ตัวแปร</th><th>ค่าเริ่มต้น</th><th>อธิบาย</th></tr>
+<tr><td><code>DP_OFF_HPA</code></td><td>0.30</td><td>dP (hPa) ที่ปิดพัดลม (0.30 = 30 Pa)</td></tr>
+<tr><td><code>DP_ON_HPA</code></td><td>0.15</td><td>dP ที่เปิดพัดลมกลับ (Hysteresis)</td></tr>
+<tr><td><code>DUST_MARGIN_UG</code></td><td>3.0</td><td>ฝุ่นในต้องน้อยกว่านอกเกินค่านี้ (ug/m3)</td></tr>
+<tr><td><code>NODE_TIMEOUT_MS</code></td><td>30000</td><td>เซ็นเซอร์เงียบเกินนี้ = Fail-safe (ms)</td></tr>
+<tr><td><code>MIN_TOGGLE_MS</code></td><td>30000</td><td>สลับ Relay ถี่สุดทุกกี่ ms (กัน Relay พัง)</td></tr>
+<tr><td><code>EMA_ALPHA</code></td><td>0.4</td><td>ความลื่นของกรอง (0.1=ลื่นมาก, 0.9=ตอบสนองเร็ว)</td></tr>
+</table>
+
+<h2>6. แก้ปัญหา</h2>
+<table>
+<tr><th>อาการ</th><th>สาเหตุที่เป็นไปได้</th><th>วิธีแก้</th></tr>
+<tr><td>ESP-NOW แสดง "ไม่สำเร็จ"</td><td>MAC ผิด / Router เปลี่ยน Channel</td><td>เช็ค MAC ใหม่ / กดปุ่ม Reset ที่ node / Fix channel Router</td></tr>
+<tr><td>UNO R4 STALE ตลอด</td><td>WiFi ชื่อผิด / Password ผิด / ไม่ได้อยู่วงเดียวกัน</td><td>เช็ค ssid+password / ต้องเชื่อมต่อ WiFi เดียวกับ MASTER</td></tr>
+<tr><td>dP แกว่งมาก</td><td>Noise ของ BMP180 (ปกติ)</td><td>ลด <code>EMA_ALPHA</code> เช่น 0.2 / คาริเบรต offset ใหม่</td></tr>
+<tr><td>ฝุ่นอ่าน 0 ตลอด</td><td>Baseline สูงเกินไป / สาย Vo หลุด</td><td>ลด baseline / เช็คต่อ Vo &rarr; GPIO34/A0</td></tr>
+<tr><td>Google Sheet ไม่ขึ้น</td><td>URL ผิด / Deploy ไม่ได้ตั้ง Anyone</td><td>เช็ค Serial HTTP code / Deploy ใหม่</td></tr>
+<tr><td>Relay สลับ ON/OFF ผิด</td><td>Active HIGH/LOW ผิด</td><td>แก้ <code>RELAY_ACTIVE_HIGH</code></td></tr>
+<tr><td>PIN 34 อ่านค่าไม่ได้</td><td>GPIO 34 เป็น Input-only ของ ESP32 (ปกติใช้ได้)</td><td>เช็คสาย Vo &rarr; GPIO34 ถูกต้อง</td></tr>
+</table>
+
+<h2>ข้อควรระวัง</h2>
+<div class="danger">
+&#8226; &#x26A0; <b>ไฟฟ้า 220V อันตราย!</b> ด้าน OUTPUT ของ Relay ที่ต่อกับพัดลม AC ต้องให้ช่างไฟฟ้าทำ<br>
+&#8226; GP2Y1014 ต้องใช้ไฟ 5V (ต่อจาก VIN/5V ของบอร์ด) ห้ามใช้ 3.3V<br>
+&#8226; แนะนำให้ fix Router 2.4GHz ไว้ที่ Channel 1, 6 หรือ 11 (ไม่ใช่ Auto)<br>
+&#8226; BMP180 มีความแม่นยำ ±1 hPa (±100 Pa) ในการวัดแบบ absolute แต่ differential accuracy ดีกว่า ~±12 Pa ด้วย EMA + Hysteresis จึงพอใช้งานสำหรับ的趋势监控<br>
+&#8226; ถ้าต้องการความแม่นเรื่องความดันต่าง &gt;5 Pa แนะนำเซ็นเซอร์เฉพาะทาง เช่น SDP810-Differential
+</div>
+</div>
+
+</body>
+</html>
